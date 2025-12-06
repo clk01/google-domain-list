@@ -1,6 +1,6 @@
 name: List google domains (with includes)
 
-"on":
+on:
   workflow_dispatch:
   push:
     paths:
