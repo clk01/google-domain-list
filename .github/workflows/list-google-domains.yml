@@ -1,0 +1,35 @@
+name: List google domains (with includes)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "scripts/list_google_domains.py"
+      - ".github/workflows/list-google-domains.yml"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate list
+        run: |
+          mkdir -p out
+          python3 scripts/list_google_domains.py --entry google --output out/google_with_includes.txt
+
+      - name: Show first 200 lines
+        run: |
+          sed -n '1,200p' out/google_with_includes.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-with-includes
+          path: out/google_with_includes.txt
