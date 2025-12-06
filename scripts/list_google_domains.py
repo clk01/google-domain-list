@@ -10,10 +10,6 @@ RAW_BASE = "https://raw.githubusercontent.com/v2fly/domain-list-community/master
 
 
 def fetch_text(path: str) -> str:
-    """
-    Fetch file content from v2fly/domain-list-community via raw URL.
-    path example: "data/google"
-    """
     url = RAW_BASE + path.lstrip("/")
     req = urllib.request.Request(url, headers={"User-Agent": "github-actions"})
     try:
@@ -23,46 +19,42 @@ def fetch_text(path: str) -> str:
         raise RuntimeError(f"Failed to fetch {url}: {e}")
 
 
-def parse_include_target(line: str) -> str:
-    """
-    Parse include line like:
-      include:geolocation-!cn
-      include:google
-    Some lists may have extra tokens; we take the first token after 'include:'.
-    """
-    rest = line[len("include:"):].strip()
-    # take first token if there are spaces/tabs
-    target = rest.split()[0].strip()
-    return target
-
-
 def should_ignore(line: str) -> bool:
     s = line.strip()
     return (not s) or s.startswith("#")
 
 
-def normalize_rule(line: str) -> str:
-    """
-    Keep original rule by default.
-    If you want ONLY naked domains, you can change this function
-    to extract domains from patterns like:
-      domain:example.com
-      full:foo.example.com
-      keyword:google
-    Right now we output the rule line (trimmed).
-    """
-    return line.strip()
+def parse_include_target(line: str) -> str:
+    rest = line[len("include:"):].strip()
+    return rest.split()[0].strip()
 
 
-def collect_rules(entry: str, visited: Set[str]) -> List[str]:
+def normalize_domain(line: str) -> str:
     """
-    Recursively load data/<entry> and its includes.
-    entry examples: "google" or "data/google"
+    Output ONLY pure domains:
+      - accept "domain:example.com"  -> "example.com"
+      - accept naked "example.com"   -> "example.com"
+    Ignore:
+      - full:..., keyword:..., regexp:..., etc.
     """
-    # turn "google" -> "data/google"
-    path = entry
-    if not path.startswith("data/"):
-        path = f"data/{path}"
+    s = line.strip()
+
+    # typed rule
+    if ":" in s:
+        kind, val = s.split(":", 1)
+        kind = kind.strip().lower()
+        val = val.strip()
+
+        if kind == "domain" and val:
+            return val
+        return ""  # drop all other kinds
+
+    # naked domain
+    return s if s else ""
+
+
+def collect_domains(entry: str, visited: Set[str]) -> List[str]:
+    path = entry if entry.startswith("data/") else f"data/{entry}"
 
     if path in visited:
         return []
@@ -78,9 +70,11 @@ def collect_rules(entry: str, visited: Set[str]) -> List[str]:
 
         if line.startswith("include:"):
             target = parse_include_target(line)
-            out.extend(collect_rules(target, visited))
+            out.extend(collect_domains(target, visited))
         else:
-            out.append(normalize_rule(line))
+            d = normalize_domain(line)
+            if d:
+                out.append(d)
 
     return out
 
@@ -92,14 +86,13 @@ def main():
     args = ap.parse_args()
 
     visited: Set[str] = set()
-    rules = collect_rules(args.entry, visited)
+    domains = collect_domains(args.entry, visited)
 
-    # de-dup + sort
-    unique = sorted(set(rules))
+    unique = sorted(set(domains))
 
     header = [
         f"# entry: {args.entry}",
-        f"# total_unique: {len(unique)}",
+        f"# total_unique_domains: {len(unique)}",
         f"# visited_files: {len(visited)}",
         "# ----",
     ]
